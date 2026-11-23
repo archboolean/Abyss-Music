@@ -1,4 +1,18 @@
-/target
-/node_modules
-/.idea
-/src/main/node_modules
+# Зависимости (в корне и в любых подпапках, включая src/main)
+node_modules/
+
+# Сборка Electron / TypeScript / Rust
+dist/
+out/
+build/
+target/
+
+# IDE и система
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Логи и переменные среды
+*.log
+.env
