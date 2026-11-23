@@ -1,18 +1,33 @@
 # Зависимости (в корне и в любых подпапках, включая src/main)
 node_modules/
 
-# Сборка Electron / TypeScript / Rust
+# Сборка Electron / Vite / TypeScript / Rust
 dist/
 out/
 build/
+release/
 target/
+.vite/
+*.tsbuildinfo
+
+# Локальные базы данных SQLite (чтобы не пушить тестовые треки и кэш)
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+*.db-wal
+*.db-shm
 
 # IDE и система
 .idea/
 .vscode/
 .DS_Store
 Thumbs.db
+desktop.ini
 
 # Логи и переменные среды
 *.log
+npm-debug.log*
 .env
+.env.local
+.env.*.local

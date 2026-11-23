@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { app, BrowserWindow } from 'electron';
 import { setupIpcHandlers } from './handlers';
+import {registerScannerIpcHandlers} from "./scanner/scanner_handlers";
 
 function createWindow() {
     const win = new BrowserWindow({
@@ -18,6 +19,7 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+    registerScannerIpcHandlers()
     setupIpcHandlers();
     createWindow();
 });

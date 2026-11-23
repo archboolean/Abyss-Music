@@ -14,5 +14,8 @@
     "@types/node": "^26.6.6",
     "electron": "^45.4.1",
     "typescript": "^7.0.2"
+  },
+  "dependencies": {
+    "music-metadata": "^12.8.1"
   }
 }
