@@ -1,21 +1,18 @@
 {
   "name": "abyssmusic",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "Abyss Music Desktop Player",
+  "main": "dist/main/index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "build:main": "tsc -p tsconfig.main.json",
+    "build:renderer": "vite build",
+    "build": "npm run build:main && npm run build:renderer",
+    "dev:renderer": "vite",
+    "dev:electron": "wait-on http://localhost:5173 && electron .",
+    "dev": "npm run build:main && concurrently \"npm:dev:renderer\" \"npm:dev:electron\""
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "type": "commonjs",
-  "devDependencies": {
-    "@types/node": "^26.6.6",
-    "electron": "^45.4.1",
-    "typescript": "^7.0.2"
-  },
-  "dependencies": {
-    "music-metadata": "^12.8.1"
-  }
+  "type": "commonjs"
 }

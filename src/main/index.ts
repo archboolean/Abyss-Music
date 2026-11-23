@@ -1,25 +1,33 @@
 import path from 'node:path';
 import { app, BrowserWindow } from 'electron';
 import { setupIpcHandlers } from './handlers';
-import {registerScannerIpcHandlers} from "./ipc/scanner_handlers";
 
 function createWindow() {
-    const win = new BrowserWindow({
-        width: 1200,
-        height: 800,
-        webPreferences: {
-            preload: path.join(__dirname, '../preload/preload.js'),
-            contextIsolation: true, // обязательно для contextBridge
-            nodeIntegration: false, // запрещаем Node.js в React
-            sandbox: true,          // изолируем процесс рендерера
-        },
-    });
+  const win = new BrowserWindow({
+    width: 1280,
+    height: 820,
+    minWidth: 960,
+    minHeight: 640,
+    backgroundColor: '#111113',
+    autoHideMenuBar: true, // скрывает верхнее меню File/Edit/View
+    webPreferences: {
+      preload: path.join(__dirname, '../preload/preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+    },
+  });
 
-    return win;
+  if (!app.isPackaged) {
+    win.loadURL('http://localhost:5173');
+  } else {
+    win.loadFile(path.join(__dirname, '../renderer/index.html'));
+  }
+
+  return win;
 }
 
 app.whenReady().then(() => {
-    registerScannerIpcHandlers()
-    setupIpcHandlers();
-    createWindow();
+  setupIpcHandlers();
+  createWindow();
 });
