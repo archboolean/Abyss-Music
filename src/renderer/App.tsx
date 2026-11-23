@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useRef } from 'react';
 import {
   Play,
   Pause,
@@ -12,6 +12,7 @@ import { Sidebar, NavTab } from './components/Sidebar';
 import { WaveModal } from './components/WaveModal';
 import { TrackList } from './components/TrackList';
 import { PlayerBar } from './components/PlayerBar';
+import { EqualizerModal } from './components/EqualizerModal';
 import {
   MOCK_TRACKS,
   INITIAL_PLAYLISTS,
@@ -20,12 +21,16 @@ import {
 } from './data/mock_data';
 import { WaveSettings } from '../shared/models';
 import { invokeIpc, subscribeIpc } from './services/ipc_client';
+import { AudioPlayer } from './audio/AudioPlayer';
+import { TrackItem } from '../shared_types/models';
+import { EQ_FREQUENCIES } from './equalizer/Equalizer';
 
 export const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<NavTab>('home');
   const [activePlaylistId, setActivePlaylistId] = useState<string | null>(null);
   const [tracks, setTracks] = useState<UIMockTrack[]>(MOCK_TRACKS);
   const [playlists, setPlaylists] = useState<UIMockPlaylist[]>(INITIAL_PLAYLISTS);
+  const [libraryTracks, setLibraryTracks] = useState<TrackItem[]>([]);
 
   const [currentTrack, setCurrentTrack] = useState<UIMockTrack | null>(MOCK_TRACKS[0]);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -33,6 +38,7 @@ export const App: React.FC = () => {
   const [isRepeat, setIsRepeat] = useState(false);
   const [isQueueOpen, setIsQueueOpen] = useState(false);
   const [positionSec, setPositionSec] = useState(0);
+  const [durationSec, setDurationSec] = useState(0);
   const [volume, setVolume] = useState(0.75);
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -44,75 +50,249 @@ export const App: React.FC = () => {
     genre: null,
   });
 
+  const [isEqualizerOpen, setIsEqualizerOpen] = useState(false);
+  const [equalizerGains, setEqualizerGains] = useState<number[]>(new Array(10).fill(0));
+  const [theme, setTheme] = useState<'dark' | 'light'>('dark');
+
+  const audioPlayerRef = useRef<AudioPlayer | null>(null);
+
+  useEffect(() => {
+    const player = new AudioPlayer();
+    audioPlayerRef.current = player;
+
+    player.setOnTimeUpdate((currentTime, duration) => {
+      setPositionSec(currentTime);
+      setDurationSec(duration);
+    });
+
+    player.setOnPlayStateChange((isPlaying) => {
+      setIsPlaying(isPlaying);
+    });
+
+    player.setOnTrackEnd(() => {
+      player.next();
+    });
+
+    // Enable equalizer by default
+    player.enableEqualizer();
+
+    return () => {
+      // Cleanup if needed
+    };
+  }, []);
+
   useEffect(() => {
     const unsubscribe = subscribeIpc('player:state-changed', (state) => {
       setIsPlaying(state.isPlaying);
       setPositionSec(state.positionSec);
     });
-    return unsubscribe;
-  }, []);
 
+    // Listen for media key commands
+    const handlePlayerCommand = (command: string) => {
+      const player = audioPlayerRef.current;
+      if (!player) return;
+
+      switch (command) {
+        case 'toggle-play':
+          handleTogglePlay();
+          break;
+        case 'next':
+          player.next();
+          break;
+        case 'prev':
+          player.prev();
+          break;
+      }
+    };
+
+    // Keyboard shortcuts
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ignore if typing in input
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        return;
+      }
+
+      const player = audioPlayerRef.current;
+      if (!player) return;
+
+      switch (e.code) {
+        case 'Space':
+          e.preventDefault();
+          handleTogglePlay();
+          break;
+        case 'ArrowRight':
+          if (e.shiftKey) {
+            player.next();
+          } else {
+            handleSeek(player.getCurrentTime() + 10);
+          }
+          break;
+        case 'ArrowLeft':
+          if (e.shiftKey) {
+            player.prev();
+          } else {
+            handleSeek(player.getCurrentTime() - 10);
+          }
+          break;
+        case 'ArrowUp':
+          e.preventDefault();
+          handleVolumeChange(Math.min(1, volume + 0.05));
+          break;
+        case 'ArrowDown':
+          e.preventDefault();
+          handleVolumeChange(Math.max(0, volume - 0.05));
+          break;
+        case 'KeyF':
+          e.preventDefault();
+          handleToggleFavorite(currentTrack?.id || '');
+          break;
+        case 'KeyQ':
+          e.preventDefault();
+          setIsQueueOpen((q) => !q);
+          break;
+        case 'KeyE':
+          e.preventDefault();
+          setIsEqualizerOpen(true);
+          break;
+      }
+    };
+
+    if (window.abyssApi) {
+      const unsubscribeCommand = window.abyssApi.onPlayerCommand(handlePlayerCommand);
+      window.addEventListener('keydown', handleKeyDown);
+      return () => {
+        unsubscribe();
+        unsubscribeCommand();
+        window.removeEventListener('keydown', handleKeyDown);
+      };
+    }
+
+    return unsubscribe;
+  }, [volume, currentTrack]);
+
+  // Load library tracks on mount
   useEffect(() => {
-    if (!isPlaying || !currentTrack) return;
-    const timer = window.setInterval(() => {
-      setPositionSec((prev) =>
-        prev + 1 >= currentTrack.durationSeconds ? 0 : prev + 1
-      );
-    }, 1000);
-    return () => window.clearInterval(timer);
-  }, [isPlaying, currentTrack]);
+    const loadLibrary = async () => {
+      const libTracks = await invokeIpc('library:get-tracks');
+      if (libTracks) {
+        setLibraryTracks(libTracks);
+      }
+    };
+    loadLibrary();
+  }, []);
 
   const handlePlayTrack = async (track: UIMockTrack) => {
     setCurrentTrack(track);
     setPositionSec(0);
     setIsPlaying(true);
-    await invokeIpc('player:play', track.id);
-  };
 
-  const handleTogglePlay = async () => {
-    if (!currentTrack) return;
-    const nextState = !isPlaying;
-    setIsPlaying(nextState);
-    if (nextState) {
-      await invokeIpc('player:play', currentTrack.id);
-    } else {
-      await invokeIpc('player:pause');
+    const player = audioPlayerRef.current;
+    if (player) {
+      // Try to find the track in library first
+      const libTrack = libraryTracks.find(t => t.id === track.id);
+      if (libTrack) {
+        await player.playTrack(libTrack);
+      } else {
+        // Use mock data
+        const mockTrack: TrackItem = {
+          id: track.id,
+          title: track.title,
+          artist: track.artist,
+          album: track.album,
+          duration: track.durationSeconds,
+          filePath: '',
+          sourceType: 'local',
+          isFavorite: track.isFavorite,
+        };
+        await player.playTrack(mockTrack);
+      }
     }
   };
 
-  const handleVolumeChange = async (nextVol: number) => {
-    setVolume(nextVol);
-    await invokeIpc('player:set-volume', nextVol);
+  const handleTogglePlay = async () => {
+    const player = audioPlayerRef.current;
+    if (!player || !currentTrack) return;
+
+    if (player.isPlaying()) {
+      player.pause();
+    } else {
+      await handlePlayTrack(currentTrack);
+    }
   };
 
-  const handleToggleFavorite = (trackId: string) => {
+  const handleVolumeChange = (nextVol: number) => {
+    setVolume(nextVol);
+    const player = audioPlayerRef.current;
+    if (player) {
+      player.setVolume(nextVol);
+    }
+  };
+
+  const handleToggleFavorite = async (trackId: string) => {
     setTracks((prev) =>
       prev.map((t) => (t.id === trackId ? { ...t, isFavorite: !t.isFavorite } : t))
     );
     if (currentTrack?.id === trackId) {
       setCurrentTrack((prev) => (prev ? { ...prev, isFavorite: !prev.isFavorite } : null));
     }
+    // Also update in database
+    await invokeIpc('library:toggle-favorite', trackId);
   };
 
-  const handleCreatePlaylist = () => {
-    const newPl: UIMockPlaylist = {
-      id: `pl-${Date.now()}`,
-      name: `Плейлист #${playlists.length + 1}`,
-      trackIds: [],
-      coverGradient: 'linear-gradient(135deg, #3c3a39 0%, #1d1c1c 100%)',
-    };
-    setPlaylists((prev) => [...prev, newPl]);
+  const handleCreatePlaylist = async () => {
+    const newPl = await invokeIpc('playlist:create', `Плейлист #${playlists.length + 1}`);
+    if (newPl) {
+      setPlaylists((prev) => [...prev, newPl]);
+    }
   };
 
   const handleScanFolder = async () => {
-    await invokeIpc('library:scan-folder', 'G:\\Music');
+    const folderPath = await invokeIpc('library:select-folder');
+    if (folderPath) {
+      const result = await invokeIpc('library:scan-folder', folderPath);
+      if (result) {
+        // Reload library
+        const libTracks = await invokeIpc('library:get-tracks');
+        if (libTracks) {
+          setLibraryTracks(libTracks);
+        }
+      }
+    }
   };
 
   const handleStepTrack = (delta: number) => {
-    if (!currentTrack || tracks.length === 0) return;
-    const idx = tracks.findIndex((t) => t.id === currentTrack.id);
-    const nextIdx = (idx + delta + tracks.length) % tracks.length;
-    handlePlayTrack(tracks[nextIdx]);
+    const player = audioPlayerRef.current;
+    if (!player) return;
+
+    if (delta > 0) {
+      player.next();
+    } else {
+      player.prev();
+    }
+  };
+
+  const handleSeek = (time: number) => {
+    const player = audioPlayerRef.current;
+    if (player) {
+      player.seek(time);
+    }
+  };
+
+  const handleSetEqualizerBandGain = (bandIndex: number, gainDb: number) => {
+    const player = audioPlayerRef.current;
+    if (player) {
+      player.setEqualizerBandGain(bandIndex, gainDb);
+    }
+    const newGains = [...equalizerGains];
+    newGains[bandIndex] = gainDb;
+    setEqualizerGains(newGains);
+  };
+
+  const handleApplyEqualizerPreset = (presetName: string) => {
+    const player = audioPlayerRef.current;
+    if (player) {
+      player.applyEqualizerPreset(presetName);
+    }
   };
 
   const favoriteTracks = useMemo(() => tracks.filter((t) => t.isFavorite), [tracks]);
@@ -386,14 +566,18 @@ export const App: React.FC = () => {
         isRepeat={isRepeat}
         isQueueOpen={isQueueOpen}
         positionSec={positionSec}
+        durationSec={durationSec}
         volume={volume}
+        audioContext={audioPlayerRef.current?.getAudioContext() || null}
+        gainNode={audioPlayerRef.current?.getGainNode() || null}
         onTogglePlay={handleTogglePlay}
         onToggleShuffle={() => setIsShuffle((s) => !s)}
         onToggleRepeat={() => setIsRepeat((r) => !r)}
         onToggleQueue={() => setIsQueueOpen((q) => !q)}
+        onToggleEqualizer={() => setIsEqualizerOpen(true)}
         onPrev={() => handleStepTrack(-1)}
         onNext={() => handleStepTrack(1)}
-        onSeek={setPositionSec}
+        onSeek={handleSeek}
         onVolumeChange={handleVolumeChange}
         onToggleFavorite={handleToggleFavorite}
       />
@@ -403,6 +587,14 @@ export const App: React.FC = () => {
         initialSettings={waveSettings}
         onClose={() => setIsWaveModalOpen(false)}
         onApply={setWaveSettings}
+      />
+
+      <EqualizerModal
+        isOpen={isEqualizerOpen}
+        onClose={() => setIsEqualizerOpen(false)}
+        onSetBandGain={handleSetEqualizerBandGain}
+        onApplyPreset={handleApplyEqualizerPreset}
+        currentGains={equalizerGains}
       />
     </div>
   );

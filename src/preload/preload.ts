@@ -38,6 +38,17 @@ export const abyssApi = {
             ipcRenderer.removeListener(channel, wrapped);
         };
     },
+
+    // Special handler for player:command which sends string instead of object
+    onPlayerCommand(listener: (command: string) => void): () => void {
+        const wrapped = (_event: IpcRendererEvent, command: string) => {
+            listener(command);
+        };
+        ipcRenderer.on('player:command', wrapped);
+        return () => {
+            ipcRenderer.removeListener('player:command', wrapped);
+        };
+    },
 };
 
 export type AbyssApi = typeof abyssApi;

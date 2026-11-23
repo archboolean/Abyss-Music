@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { UIMockTrack } from '../data/mock_data';
 import { formatDuration } from './TrackList';
+import { AudioVisualizer } from './AudioVisualizer';
 
 interface PlayerBarProps {
   currentTrack: UIMockTrack | null;
@@ -22,11 +23,15 @@ interface PlayerBarProps {
   isRepeat: boolean;
   isQueueOpen: boolean;
   positionSec: number;
+  durationSec: number;
   volume: number;
+  audioContext: any;
+  gainNode: any;
   onTogglePlay: () => void;
   onToggleShuffle: () => void;
   onToggleRepeat: () => void;
   onToggleQueue: () => void;
+  onToggleEqualizer: () => void;
   onPrev: () => void;
   onNext: () => void;
   onSeek: (sec: number) => void;
@@ -41,11 +46,15 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
   isRepeat,
   isQueueOpen,
   positionSec,
+  durationSec,
   volume,
+  audioContext,
+  gainNode,
   onTogglePlay,
   onToggleShuffle,
   onToggleRepeat,
   onToggleQueue,
+  onToggleEqualizer,
   onPrev,
   onNext,
   onSeek,
@@ -55,7 +64,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
   const progressRef = useRef<HTMLDivElement>(null);
   const volumeRef = useRef<HTMLDivElement>(null);
 
-  const duration = currentTrack?.durationSeconds ?? 0;
+  const duration = durationSec > 0 ? durationSec : (currentTrack?.durationSeconds ?? 0);
   const progressPercent = duration > 0 ? Math.min(100, (positionSec / duration) * 100) : 0;
 
   const handleProgressClick = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -166,6 +175,21 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
       </div>
 
       <div className="player-right">
+        <AudioVisualizer
+          audioContext={audioContext}
+          gainNode={gainNode}
+          isPlaying={isPlaying}
+        />
+
+        <button
+          type="button"
+          className="icon-ghost-btn"
+          onClick={onToggleEqualizer}
+          title="Эквалайзер"
+        >
+          <SlidersHorizontal size={17} />
+        </button>
+
         <button
           type="button"
           className={`icon-ghost-btn ${isQueueOpen ? 'is-active' : ''}`}
